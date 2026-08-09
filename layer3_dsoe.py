@@ -1,57 +1,39 @@
-import logging
 import time
 
-# Configure structured logging for the orchestrator
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger("DSOE_Saga")
+class DurableSagaOrchestrationEngine:
+    def __init__(self):
+        self.execution_dag = []
+        self.compensating_dag = []
+        self.audit_ledger = []
 
-def forward_action(host_id: str) -> None:
-    """Executes the primary security action."""
-    logger.info(f"[EXECUTE] Isolating Host: {host_id}.")
-    # Simulate network delay/execution time
-    time.sleep(1)
+    def register_transaction(self, forward_op: str, reverse_op: str):
+        self.execution_dag.append(forward_op)
+        self.compensating_dag.insert(0, reverse_op)
 
-def compensating_action(host_id: str) -> None:
-    """Reverts the primary security action if the workflow fails."""
-    logger.info(f"[SAGA ROLLBACK] Unisolating Host: {host_id}.")
-    # Simulate network delay/execution time
-    time.sleep(1)
+    def execute_speculative_branch(self, target: str):
+        self.audit_ledger.clear()
+        self.execution_dag.clear()
+        self.compensating_dag.clear()
+        
+        self.audit_ledger.append(f"[T=0] Initializing Speculative Micro-VM Sandbox for {target}")
+        self.register_transaction(f"Isolate_EC2_Instance({target})", f"Restore_EC2_Instance({target})")
+        self.register_transaction(f"Revoke_IAM_Role({target})", f"Reattach_IAM_Role({target})")
 
-def execute_saga_workflow(host_id: str) -> None:
-    """
-    Orchestrates the transactional execution of a security action.
-    Includes built-in error simulation to trigger the compensation logic.
-    """
-    logger.info(f"--- Starting Saga Transaction for target: {host_id} ---")
-    
-    try:
-        # 1. Execute the forward action
-        forward_action(host_id)
-        
-        # 2. Simulate a failure (e.g., API timeout, false positive alert, DLME block)
-        logger.warning("[SIMULATION] Exception encountered: False positive detected after isolation.")
-        raise RuntimeError("Operation aborted due to policy conflict.")
-        
-        # (If successful, this would log completion)
-        logger.info(f"[SUCCESS] Workflow completed for {host_id}.")
-        
-    except Exception as e:
-        # 3. Catch the failure and trigger the rollback
-        logger.error(f"[FAILED] Transaction interrupted: {e}")
-        logger.info("Initiating sequential Saga compensation...")
-        
-        try:
-            compensating_action(host_id)
-            logger.info("--- Saga Rollback Completed Successfully ---")
-        except Exception as rollback_error:
-            # In a production system, a failed rollback requires human intervention
-            logger.critical(f"[FATAL] Saga compensation failed: {rollback_error}")
+        for op in self.execution_dag:
+            self.audit_ledger.append(f"[FORWARD_MUTATION] ➔ {op}")
+            time.sleep(0.3)
 
-if __name__ == "__main__":
-    # Test the workflow with the target IP
-    target_ip = "192.168.1.50"
-    execute_saga_workflow(target_ip)
+        self.audit_ledger.append("[EPISTEMIC FAULT] False Positive Detected! Target is critical infrastructure.")
+        return self._trigger_acid_rollback()
+
+    def _trigger_acid_rollback(self):
+        self.audit_ledger.append("==================================================")
+        self.audit_ledger.append("[INITIATING DURABLE SAGA ROLLBACK]")
+        self.audit_ledger.append("==================================================")
+        
+        for comp_op in self.compensating_dag:
+            self.audit_ledger.append(f"[COMPENSATING_TRANSACTION] ↺ {comp_op}")
+            time.sleep(0.4)
+            
+        self.audit_ledger.append("[STATE ALIGNMENT] Core enterprise memory restored to pristine baseline.")
+        return self.audit_ledger
