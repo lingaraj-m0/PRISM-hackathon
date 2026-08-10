@@ -31,9 +31,30 @@ class DurableSagaOrchestrationEngine:
         self.audit_ledger.append("[INITIATING DURABLE SAGA ROLLBACK]")
         self.audit_ledger.append("==================================================")
         
+        MAX_RETRIES = 3
+        
         for comp_op in self.compensating_dag:
-            self.audit_ledger.append(f"[COMPENSATING_TRANSACTION] ↺ {comp_op}")
-            time.sleep(0.4)
+            success = False
+            for attempt in range(MAX_RETRIES):
+                try:
+                    self.audit_ledger.append(f"[COMPENSATING_TRANSACTION] ↺ Attempt {attempt + 1}: {comp_op}")
+                    
+                    # Simulating the actual API call execution
+                    time.sleep(0.4) 
+                    
+                    success = True
+                    break # Exit retry loop on success
+                    
+                except Exception as e:
+                    backoff_time = 2 ** attempt
+                    self.audit_ledger.append(f"[WARNING] Compensating action failed: {e}. Retrying in {backoff_time}s...")
+                    time.sleep(backoff_time)
+            
+            if not success:
+                # Deadlock Protection: Route to Dead Letter Queue
+                self.audit_ledger.append(f"[FATAL] Transaction '{comp_op}' permanently failed. Routing to DLQ.")
+                self.audit_ledger.append("[SYSTEM HALT] Manual Human Intervention Required. System Partitioned.")
+                return self.audit_ledger
             
         self.audit_ledger.append("[STATE ALIGNMENT] Core enterprise memory restored to pristine baseline.")
         return self.audit_ledger
